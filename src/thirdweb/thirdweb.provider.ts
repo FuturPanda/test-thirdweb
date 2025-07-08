@@ -2,12 +2,17 @@ import { Logger, Provider } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { EnvironmentVariables } from 'src/_utils/config/env.config';
 import {
-  THIRDWEB_ADMIN_ACCOUNT_TOKEN,
   THIRDWEB_AUTH_TOKEN,
   THIRDWEB_CLIENT_TOKEN,
   THIRDWEB_CONTRACTS_TOKEN,
+  THIRDWEB_SERVER_WALLET_TOKEN,
 } from 'src/_utils/constants';
-import { createThirdwebClient, getContract, ThirdwebClient } from 'thirdweb';
+import {
+  createThirdwebClient,
+  Engine,
+  getContract,
+  ThirdwebClient,
+} from 'thirdweb';
 import { createAuth } from 'thirdweb/auth';
 import { monadTestnet } from 'thirdweb/chains';
 import { Account, privateKeyToAccount } from 'thirdweb/wallets';
@@ -22,9 +27,11 @@ export const thirdwebProviders: Provider[] = [
       logger: Logger,
     ): Promise<ThirdwebClient> => {
       const secretKey = configService.get('THIRDWEB').THIRDWEB_SECRET_KEY;
+      const clientId = 'db7cc2f0f77bbbf7b74a0afd5a8b21b0';
       try {
         const client = createThirdwebClient({
           secretKey: secretKey,
+          clientId: clientId,
         });
         logger.log(
           'Thirdweb SDK initialized successfully',
@@ -42,22 +49,35 @@ export const thirdwebProviders: Provider[] = [
     inject: [ConfigService, Logger],
   },
   {
-    provide: THIRDWEB_ADMIN_ACCOUNT_TOKEN,
+    provide: THIRDWEB_SERVER_WALLET_TOKEN,
     useFactory: async (
       configService: ConfigService<EnvironmentVariables, true>,
       thirdwebClient: ThirdwebClient,
       logger: Logger,
     ): Promise<Account> => {
-      const privateKey = configService.get('THIRDWEB').THIRDWEB_PRIVATE_KEY;
-      const adminAccount = privateKeyToAccount({
-        client: thirdwebClient,
-        privateKey: privateKey,
-      });
-      logger.log(
-        'Thirdweb Admin Account initialized successfully',
-        THIRDWEB_AUTH_TOKEN,
-      );
-      return adminAccount;
+      const serverWalletAddress =
+        configService.get('THIRDWEB').THIRDWEB_SERVER_WALLET_ADDRESS;
+      const vaultAccessToken =
+        configService.get('THIRDWEB').THIRDWEB_VAULT_ACCESS_TOKEN;
+      try {
+        const serverWallet = Engine.serverWallet({
+          client: thirdwebClient,
+          address: serverWalletAddress,
+          vaultAccessToken: vaultAccessToken,
+          chain: monadTestnet,
+        });
+        logger.log(
+          'Thirdweb server wallet initialized successfully',
+          THIRDWEB_SERVER_WALLET_TOKEN,
+        );
+        return serverWallet;
+      } catch (error) {
+        logger.error(
+          `Failed to initialize Thirdweb server wallet, ${error.message}`,
+          THIRDWEB_SERVER_WALLET_TOKEN,
+        );
+        throw error;
+      }
     },
     inject: [ConfigService, THIRDWEB_CLIENT_TOKEN, Logger],
   },
@@ -66,24 +86,33 @@ export const thirdwebProviders: Provider[] = [
     useFactory: async (
       configService: ConfigService<EnvironmentVariables, true>,
       thirdwebClient: ThirdwebClient,
-      thirdwebAdminAccount: Account,
       logger: Logger,
     ): Promise<ThirdwebAuth> => {
       const domain = configService.get('THIRDWEB').THIRDWEB_DOMAIN;
-      const auth = createAuth({
-        domain: domain,
-        client: thirdwebClient,
-        adminAccount: thirdwebAdminAccount,
-      });
-      logger.log('Thirdweb AUTH initialized successfully', THIRDWEB_AUTH_TOKEN);
-      return auth;
+      const privateKey = configService.get('THIRDWEB').THIRDWEB_PRIVATE_KEY;
+      try {
+        const auth = createAuth({
+          domain: domain,
+          client: thirdwebClient,
+          adminAccount: privateKeyToAccount({
+            client: thirdwebClient,
+            privateKey: privateKey,
+          }),
+        });
+        logger.log(
+          'Thirdweb AUTH initialized successfully',
+          THIRDWEB_AUTH_TOKEN,
+        );
+        return auth;
+      } catch (error) {
+        logger.error(
+          `Failed to initialize Thirdweb AUTH, ${error.message}`,
+          THIRDWEB_AUTH_TOKEN,
+        );
+        throw error;
+      }
     },
-    inject: [
-      ConfigService,
-      THIRDWEB_CLIENT_TOKEN,
-      THIRDWEB_ADMIN_ACCOUNT_TOKEN,
-      Logger,
-    ],
+    inject: [ConfigService, THIRDWEB_CLIENT_TOKEN, Logger],
   },
   /**
    * TODO :

@@ -7,13 +7,8 @@ import {
 import { TOKENS } from "src/thirdweb/_utils/enums";
 import { TokenFilters } from "src/tokens/_utils/dto/request/token-filters";
 import { UserDocument } from "src/users/users.schema";
-import { Engine, ThirdwebClient, ThirdwebContract } from "thirdweb";
-import { monadTestnet } from "thirdweb/chains";
-import {
-  getBalance,
-  GetBalanceResult,
-  transfer,
-} from "thirdweb/extensions/erc20";
+import { ThirdwebClient, ThirdwebContract } from "thirdweb";
+import { getBalance, GetBalanceResult } from "thirdweb/extensions/erc20";
 import { TokensMapper } from "./tokens.mapper";
 
 @Injectable()
@@ -52,41 +47,5 @@ export class TokensService {
       address: user.walletId,
       contract: oreContract,
     });
-  }
-
-  async createTransaction(user: UserDocument) {
-    const serverWallet = Engine.serverWallet({
-      client: this.thirdwebClient,
-      address: this.configService.get("THIRDWEB").SERVER_WALLET_ADDRESS,
-      vaultAccessToken: this.configService.get("THIRDWEB").VAULT_ACCESS_TOKEN,
-      chain: monadTestnet,
-    });
-
-    const oreContract = this.thirdwebContracts.get(TOKENS.OR);
-
-    const transaction = transfer({
-      contract: oreContract!,
-      to: this.configService.get("THIRDWEB").TEST_WALLET_RECIPIENT,
-      amount: 1,
-    });
-
-    const { transactionId } = await serverWallet.enqueueTransaction({
-      transaction,
-    });
-
-    console.log("transactionId:", transactionId);
-
-    const executionResult = await Engine.getTransactionStatus({
-      client: this.thirdwebClient,
-      transactionId,
-    });
-
-    console.log("executionResult:", executionResult);
-
-    const txHash = await Engine.waitForTransactionHash({
-      client: this.thirdwebClient,
-      transactionId,
-    });
-    console.log("Transaction hash:", txHash);
   }
 }
